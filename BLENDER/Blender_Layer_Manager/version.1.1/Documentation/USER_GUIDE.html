@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Layer Manager for Blender — User Guide</title>
+<style>
+  :root {
+    --bg: #1e1f22;
+    --panel: #2b2d31;
+    --panel-2: #232428;
+    --border: #3a3d42;
+    --text: #e3e5e8;
+    --muted: #9ba0a6;
+    --accent: #ffa94d;
+    --accent-2: #74b3ff;
+    --green: #63c96b;
+    --red: #ff6b6b;
+    --code-bg: #16171a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  header {
+    background: linear-gradient(135deg, #2b2d31 0%, #1e1f22 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 3rem 2rem 2.5rem;
+    text-align: center;
+  }
+
+  header h1 {
+    margin: 0 0 0.5rem;
+    font-size: 2.2rem;
+    letter-spacing: 0.02em;
+  }
+
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 1.05rem;
+  }
+
+  .badges { margin-top: 1rem; }
+  .badge {
+    display: inline-block;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25rem 0.9rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin: 0.2rem;
+  }
+  .badge.hl { color: var(--accent); border-color: rgba(255,169,77,0.4); }
+
+  main { max-width: 880px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+
+  nav {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  nav h2 { margin: 0 0 0.6rem; font-size: 0.95rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  nav ol { margin: 0; padding-left: 1.3rem; column-count: 2; }
+  nav a { color: var(--accent-2); text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+
+  h2 {
+    margin: 3rem 0 0.8rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid var(--accent);
+    font-size: 1.4rem;
+    color: var(--accent);
+  }
+  h3 { font-size: 1.1rem; margin: 1.8rem 0 0.5rem; color: var(--accent-2); }
+
+  p, li { color: var(--text); }
+  ul { padding-left: 1.4rem; }
+
+  .callout {
+    border-left: 4px solid;
+    border-radius: 6px;
+    padding: 0.8rem 1.2rem;
+    margin: 1.2rem 0;
+  }
+  .callout.info { background: var(--panel-2); border-color: var(--accent-2); }
+  .callout.warn { background: var(--panel-2); border-color: var(--red); }
+  .callout.tip  { background: var(--panel-2); border-color: var(--green); }
+
+  code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0.1rem 0.4rem;
+    font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+    font-size: 0.9em;
+  }
+
+  .op { background: var(--code-bg); border-radius: 6px; padding: 1rem 1.2rem; overflow-x: auto; margin: 0.8rem 0; }
+
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.8rem;
+    text-align: left;
+    font-size: 0.92rem;
+  }
+  th { background: var(--panel-2); color: var(--accent); }
+
+  .screenshot {
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 1rem 0;
+  }
+
+  .desc { color: var(--muted); font-style: italic; margin-bottom: 1rem; }
+
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin: 1rem 0; }
+  .cell {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.7rem;
+    text-align: center;
+    font-size: 0.85rem;
+  }
+  .cell b { display: block; color: var(--accent); font-size: 1rem; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    text-align: center;
+    padding: 1.5rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  @media (max-width: 640px) {
+    nav ol { column-count: 1; }
+    .grid3 { grid-template-columns: 1fr; }
+    main { padding: 1.5rem 1rem 4rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Layer Manager for Blender</h1>
+  <p>Manage collection render flags across all your view layers — from a single panel.</p>
+  <div class="badges">
+    <span class="badge hl">Version 1.1</span>
+    <span class="badge">Blender 5.0+</span>
+    <span class="badge">Category: Lighting</span>
+    <span class="badge">By Rudy Leti</span>
+  </div>
+</header>
+
+<main>
+
+<nav>
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#introduction">Introduction</a></li>
+    <li><a href="#installation">Installation</a></li>
+    <li><a href="#quick-start">Quick Start</a></li>
+    <li><a href="#interface">The Panel Interface</a></li>
+    <li><a href="#workflow">Staging Workflow</a></li>
+    <li><a href="#override">Copy (Override)</a></li>
+    <li><a href="#rtfm">The Flag Reference</a></li>
+    <li><a href="#tips">Pro Tips</a></li>
+    <li><a href="#faq">FAQ &amp; Troubleshooting</a></li>
+    <li><a href="#credits">Credits &amp; License</a></li>
+  </ol>
+</nav>
+
+<section id="introduction">
+  <h2>1. Introduction</h2>
+  <p>
+    The <strong>Layer Manager</strong> is a Blender add-on built for render-artist
+    workflows. It gives you a single, readable table of all your collections
+    and their per-view-layer render flags — <code>EXCLUDE</code>,
+    <code>HOLDOUT</code>, and <code>INDIRECT</code> — right in the 3D Viewport
+    sidebar.
+  </p>
+  <p>
+    Instead of scattering toggles across dozens of view layers in the Outliner,
+    you see everything at a glance, stage changes safely, and commit them
+    in one click. You can even copy one view layer's complete setup to all the
+    others.
+  </p>
+  <div class="grid3">
+    <div class="cell"><b>All view layers</b><br>one clean table</div>
+    <div class="cell"><b>Safe staging</b><br>preview before you commit</div>
+    <div class="cell"><b>One-click sync</b><br>copy flags across layers</div>
+  </div>
+</section>
+
+<section id="installation">
+  <h2>2. Installation</h2>
+  <h3>Requirements</h3>
+  <ul>
+    <li>Blender <strong>5.0</strong> or newer.</li>
+    <li>The add-on ships as a folder (<code>version.1.1</code>).</li>
+  </ul>
+
+  <h3>Steps</h3>
+  <ol>
+    <li>Open Blender.</li>
+    <li>Go to <code>Edit &rsaquo; Preferences &rsaquo; Add-ons</code>.</li>
+    <li>Click <strong>Install…</strong> and select the <code>__init__.py</code> file
+        or the add-on folder inside <code>version.1.1</code>.</li>
+    <li>
+      Enable the add-on by ticking <strong>Interface &rsaquo; Add-ons &rsaquo;
+      Lighting &rsaquo; Layer Manager</strong>.
+    </li>
+    <li>
+      Find the panel at <code>View 3D &rsaquo; Sidebar (N-key) &rsaquo;
+      Layer Manager</code>.
+    </li>
+  </ol>
+
+  <h3>Update</h3>
+  <ol>
+    <li>Disable the old version in <code>Preferences &rsaquo; Add-ons</code>.</li>
+    <li>Remove the old add-on folder from your scripts directory if needed.</li>
+    <li>Install the new version and re-enable it.</li>
+  </ol>
+
+  <div class="callout warn">
+    <strong>Duplicate add-on detected?</strong> If the panel says
+    <em>&ldquo;Layer Manager is not registered&rdquo;</em>, you probably have two copies
+    enabled. Disable one and re-enable the other.
+  </div>
+</section>
+
+<section id="quick-start">
+  <h2>3. Quick Start</h2>
+  <ol>
+    <li>Open the Sidebar in the 3D Viewport with <code>N</code> and click the
+        <strong>Layer Manager</strong> tab.</li>
+    <li>Choose the view layer you want to edit from the <strong>view layer
+        selector</strong> at the top.</li>
+    <li>Click any flag cell to stage a change (it toggles visually).</li>
+    <li>Press <strong>OK</strong> to commit, or <strong>CANCEL</strong> to discard.</li>
+  </ol>
+  <p>That's it — you're already managing layers from one place.</p>
+</section>
+
+<section id="interface">
+  <h2>4. The Panel Interface</h2>
+  <div class="desc">The panel is organized in four areas.</div>
+
+  <h3>4.1 Tool row</h3>
+  <ul>
+    <li><strong>View layer selector</strong> — the dropdown that switches which
+        view layer's flags the table shows.</li>
+    <li><strong>Refresh button</strong> (<span style="color:var(--accent-2)">↻</span>)
+        — forces Blender to re-read the live state of all view layers.</li>
+  </ul>
+
+  <h3>4.2 The table</h3>
+  <p>
+    Each row is a collection. Column order:
+  </p>
+  <ul>
+    <li><strong>Collection name</strong> — indented by depth; row name follows a
+        disclosure triangle (<span>&#9656;</span> expandable / <span>&#9662;</span>
+        expandable-and-open). Leaf collections have no triangle.</li>
+    <li><strong>Three flag cells</strong> — one per render flag. A filled icon means
+        the flag is <em>on</em>, an outline icon means <em>off</em>.</li>
+  </ul>
+
+  <h3>4.3 Pending bar</h3>
+  <p>Shows <em>Pending changes: N</em> and the <strong>OK</strong> /
+     <strong>CANCEL</strong> buttons. The buttons are disabled until at least one
+     change is staged.</p>
+
+  <h3>4.4 Override row</h3>
+  <p>A dedicated row for copying the current view layer's flags to every other
+     view layer (see <a href="#override">§6</a>). Requires two or more view layers.</p>
+</section>
+
+<section id="workflow">
+  <h2>5. The Staging Workflow</h2>
+  <p>
+    The panel uses a <strong>stage &#9654; apply</strong> workflow: nothing actually
+    changes in your scene until you confirm it.
+  </p>
+
+  <ol>
+    <li><strong>Click a flag cell</strong> to stage the opposite of its current
+        state. The icon updates immediately, and the pending counter increments.</li>
+    <li><strong>Click again</strong> to unstage the change — the counter returns.</li>
+    <li>
+      <strong>Click a parent's flag</strong> and the <em>same</em> state is staged
+      for <em>every child collection</em> below it, saving you many clicks.
+    </li>
+    <li>
+      Press <strong>OK</strong> to write all staged changes at once, or
+      <strong>CANCEL</strong> to throw them all away.
+    </li>
+  </ol>
+
+  <div class="callout tip">
+    <strong>Multiple view layers.</strong> You can stage changes for several view
+    layers in one sitting — switch the selector, make your changes, switch again —
+    and apply them all together with a single <strong>OK</strong>.
+  </div>
+
+  <div class="callout warn">
+    <strong>Delete a collection while changes are staged?</strong> The add-on
+    is resilient: it re-checks the live scene before applying and simply skips
+    collections it can no longer find, so leftover staging never causes errors.
+  </div>
+</section>
+
+<section id="override">
+  <h2>6. Copy (Override)</h2>
+  <p>
+    The <strong>Override</strong> button takes the view layer currently selected
+    in the table and copies its entire flag setup onto <em>every other</em> view
+    layer — immediately.
+  </p>
+  <ul>
+    <li>It applies instantly (no staging).</li>
+    <li>Only flags that actually differ are written.</li>
+    <li>Any changes you had staged are discarded, because the override
+        supersedes them.</li>
+    <li>A message reports how many flags were written.</li>
+    <li>The button is disabled when there is only one view layer.</li>
+  </ul>
+</section>
+
+<section id="rtfm">
+  <h2>7. The Flag Reference</h2>
+  <p>What the three flags mean in Blender rendering:</p>
+
+  <table>
+    <tr>
+      <th>Flag</th>
+      <th>Blender property</th>
+      <th>Effect</th>
+    </tr>
+    <tr>
+      <td><code>EXCLUDE</code></td>
+      <td><code>Layer Collection &rarr; Exclude</code></td>
+      <td>The collection is excluded from the view layer: it is not
+          visible, not rendered, and not ray-traced against.</td>
+    </tr>
+    <tr>
+      <td><code>HOLDOUT</code></td>
+      <td><code>Layer Collection &rarr; Holdout</code></td>
+      <td>The collection renders as a holdout: objects are hidden in the
+          final image and cut a hole in everything behind them. Useful
+          for mask/composite passes.</td>
+    </tr>
+    <tr>
+      <td><code>INDIRECT</code></td>
+      <td><code>Layer Collection &rarr; Indirect Only</code></td>
+      <td>The collection only contributes indirect light (bounces); it is
+          invisible in the beauty pass but still affects lighting
+          elsewhere.</td>
+    </tr>
+  </table>
+
+  <div class="callout info">
+    These are the exact same settings you can flip manually in the
+    <strong>Outliner (View Layers)</strong> — the add-on just makes them visible
+    in one place for all view layers at once.
+  </div>
+</section>
+
+<section id="tips">
+  <h2>8. Pro Tips</h2>
+  <ul>
+    <li><strong>Naming matters.</strong> The table lists collections by name.
+        Clear names make the table far more readable.</li>
+    <li><strong>Stage, then verify.</strong> Watch the pending counter and the
+        visual icon changes before pressing OK — nothing is written until you do.</li>
+    <li><strong>Override for light rigs.</strong> When every view layer needs the
+        same light rig settings, override once and then tweak per layer.</li>
+    <li><strong>Use Indirect for global light blockers</strong> such as studio
+        bounce objects, without polluting the beauty pass.</li>
+    <li><strong>Refresh after heavy edits.</strong> If you've been restructuring
+        collections in the Outliner, hit the refresh button to re-sync the table.</li>
+  </ul>
+</section>
+
+<section id="faq">
+  <h2>9. FAQ &amp; Troubleshooting</h2>
+
+  <h3>Why do my changes disappear?</h3>
+  <p>
+    If you press <strong>CANCEL</strong>, everything staged is discarded — that's the
+    expected behaviour. <strong>OK</strong> is what commits them.
+  </p>
+
+  <h3>Why does the panel say "No view layers"?</h3>
+  <p>The current scene has no view layers. Blender scenes can be stripped of view
+     layers; add one back in the <strong>View Layer</strong> dropdown of the
+     3D Viewport header.</p>
+
+  <h3>Why is the Override button greyed out?</h3>
+  <p>You need at least two view layers in the scene. With one view layer there is
+     nowhere to copy to.</p>
+
+  <h3>"Layer Manager is not registered" message</h3>
+  <p>You have a duplicate copy of the add-on enabled. Disable every instance in
+     <code>Preferences &rsaquo; Add-ons</code> and enable only one.</p>
+
+  <h3>A collection I staged isn't applied</h3>
+  <p>The add-on skips collections it can no longer resolve (deleted, renamed, or
+     removed from that view layer). Restage after fixing the collection in the
+     Outliner.</p>
+
+  <h3>Will this touch my actual collection visibility?</h3>
+  <p>
+    No. The add-on only touches the three render flags
+    (<code>EXCLUDE</code> / <code>HOLDOUT</code> / <code>INDIRECT</code>) on view
+    layer collections. Collection viewport/runtime visibility is unaffected.
+  </p>
+</section>
+
+<section id="credits">
+  <h2>10. Credits &amp; License</h2>
+  <p><strong>Author:</strong> Rudy Leti</p>
+  <p><strong>Version:</strong> 1.1 — built for Blender 5.0+</p>
+  <p><strong>Category:</strong> Lighting</p>
+  <p>
+    Peer-reviewed by the internal render-pipeline team. See
+    <code>DEVELOPER.md</code> in the add-on folder for the developer documentation
+    and architecture notes.
+  </p>
+  <p style="color: var(--muted);">
+    &copy; 2026 Rudy Leti. All Rights Reserved.
+  </p>
+</section>
+
+</main>
+
+<footer>
+  Layer Manager v1.1 &mdash; User Guide &copy; 2026 Rudy Leti. All Rights Reserved.
+</footer>
+
+</body>
+</html>

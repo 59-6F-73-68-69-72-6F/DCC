@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blender Layer Manager v1.0 — Developer Documentation</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a2e; max-width: 960px; margin: 0 auto; padding: 2rem; background: #f8f9fa; }
+  h1 { color: #2d3436; border-bottom: 3px solid #0984e3; padding-bottom: .5rem; }
+  h2 { color: #2d3436; border-bottom: 2px solid #dfe6e9; padding-bottom: .3rem; margin-top: 2rem; }
+  h3 { color: #636e72; margin-top: 1.5rem; }
+  h4 { color: #636e72; }
+  a { color: #0984e3; }
+  code { background: #dfe6e9; padding: .15em .4em; border-radius: 3px; font-size: .9em; font-family: "SF Mono", "Fira Code", "Consolas", monospace; }
+  pre { background: #2d3436; color: #f8f9fa; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; color: inherit; }
+  hr { border: none; border-top: 1px solid #dfe6e9; margin: 2rem 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid #dfe6e9; padding: .6rem .8rem; text-align: left; }
+  th { background: #0984e3; color: #fff; font-weight: 600; }
+  tr:nth-child(even) { background: #f1f2f6; }
+  blockquote { border-left: 4px solid #0984e3; padding: .5rem 1rem; margin: 1rem 0; background: #f1f2f6; border-radius: 0 6px 6px 0; }
+  ul, ol { padding-left: 1.5rem; }
+  .badge { display: inline-block; background: #0984e3; color: #fff; padding: .2rem .6rem; border-radius: 3px; font-size: .8rem; font-weight: 600; }
+  .note { background: #ffeaa7; border-left: 4px solid #fdcb6e; padding: .5rem 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+  .container { background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Blender Layer Manager v1.0 — Developer Documentation</h1>
+
+<h2>Architecture Overview</h2>
+
+<p>The add-on follows the <strong>Model-View-Controller (MVC)</strong> architectural pattern.</p>
+
+<pre><code>__init__.py                             (Bootstrap / Entry Point)
+    │
+    ├──► layer_manager_controller.py    (Controller)
+    │         │
+    │         ├──► layer_manager_logic.py       (Model)
+    │         │         │
+    │         │         └──► models/collection_state.py   (DTO)
+    │         │
+    │         └──► layer_manager_ui.py   (View)
+    │
+    └──► layer_manager_ui.py   (View registration)</code></pre>
+
+<h3>Layer Responsibilities</h3>
+
+<table>
+  <tr><th>Layer</th><th>File</th><th>Role</th></tr>
+  <tr><td><strong>Model</strong></td><td><code>layer_manager_logic.py</code> + <code>models/collection_state.py</code></td><td>Pure data/logic. Performs all direct Blender <code>bpy</code> operations (collection tree traversal, view-layer flag reading/writing) and owns the live-state caches. Has <strong>zero imports</strong> from View or Controller.</td></tr>
+  <tr><td><strong>View</strong></td><td><code>layer_manager_ui.py</code></td><td>Blender UI components: custom properties, Operators, Panel. Delegates all behaviour to the Controller via the <code>UI_HOOKS</code> callback dictionary.</td></tr>
+  <tr><td><strong>Controller</strong></td><td><code>layer_manager_controller.py</code></td><td>Mediates Model ↔ View. Owns the staging transaction (<code>pending</code>), registers callbacks into <code>UI_HOOKS</code>, triggers UI redraws, and resolves flag writes through the model's caches.</td></tr>
+  <tr><td><strong>Bootstrap</strong></td><td><code>__init__.py</code></td><td><code>bl_info</code> metadata, <code>register()</code> / <code>unregister()</code> add-on lifecycle, and the auto-invalidation handlers (depsgraph / undo / redo / load).</td></tr>
+</table>
+
+<hr>
+
+<h2>File Breakdown</h2>
+
+<h3><code>__init__.py</code> — Entry Point</h3>
+
+<ul>
+  <li>Defines <code>bl_info</code> (name "Layer Manager", author "Rudy Leti", version <code>(1, 0, 0)</code>, Blender <code>5.0+</code>, category "Lighting").</li>
+  <li>Module-level <code>controller_instance</code> holds the singleton <code>LayerManagerController</code>.</li>
+  <li><code>register()</code>: Instantiates <code>LayerManagerLogic</code> and <code>LayerManagerController</code>, registers UI classes via <code>lmui.register()</code>, then appends the invalidation handlers. Appends are <strong>idempotent</strong> (guarded by <code>if handler not in list</code>) because Blender auto-registers enabled add-ons at startup.</li>
+  <li><code>unregister()</code>: Removes the handlers with a defensive <code>try/except ValueError</code> (Blender may already have dropped a handler that raised), cleans up the controller (nullifies hooks), then unregisters UI classes.</li>
+  <li>Handlers: <code>_on_invalidation(*args)</code> → <code>depsgraph_update_post</code>; <code>_on_undo_redo(*args)</code> → <code>undo_post</code>, <code>redo_post</code>, <code>load_post</code>. Both call <code>controller_instance.mark_dirty()</code>.</li>
+</ul>
+
+<h3><code>layer_manager_logic.py</code> — Model Layer</h3>
+
+<p><strong>Class: <code>LayerManagerLogic</code></strong> owns two parallel caches and a dirty flag:</p>
+
+<table>
+  <tr><th>Attribute</th><th>Structure</th><th>Purpose</th></tr>
+  <tr><td><code>cache</code></td><td><code>{scene.name: {view_layer.name: {path: {flag: bool}}}}</code></td><td>Live flag states for every collection in every view layer.</td></tr>
+  <tr><td><code>layer_collections</code></td><td><code>{scene.name: {view_layer.name: {path: LayerCollection}}}</code></td><td>O(1) path → <code>LayerCollection</code> resolution for writing flags.</td></tr>
+  <tr><td><code>cache_dirty</code></td><td><code>bool</code></td><td>Global staleness flag for both caches.</td></tr>
+</table>
+
+<table>
+  <tr><th>Method</th><th>Description</th><th>Cost</th></tr>
+  <tr><td><code>mark_dirty()</code></td><td>Flags both caches as stale.</td><td>O(1)</td></tr>
+  <tr><td><code>refresh_cache(scene)</code></td><td><strong>Merged single DFS walk</strong> per view layer of <code>scene</code> that rebuilds both <code>cache</code> and <code>layer_collections</code> at once. Preserves other scenes' entries.</td><td>O(V·N)</td></tr>
+  <tr><td><code>ensure_fresh(scene)</code></td><td>Rebuilds via <code>refresh_cache</code> only when <code>cache_dirty</code> is <code>True</code>.</td><td>O(1)</td></tr>
+  <tr><td><code>get_collection_by_path(scene, path)</code></td><td>Resolves a slash-separated path to a <code>Collection</code>.</td><td>O(depth)</td></tr>
+  <tr><td><code>find_layer_collection(lc, collection)</code></td><td>Recursive DFS to find the <code>LayerCollection</code> for a <code>Collection</code>.</td><td>O(N)</td></tr>
+  <tr><td><code>get_flag_state(lc)</code></td><td>Reads EXCLUDE/HOLDOUT/INDIRECT from a <code>LayerCollection</code>.</td><td>O(1)</td></tr>
+  <tr><td><code>_set_flag(lc, flag, state)</code></td><td>Writes one flag onto a <code>LayerCollection</code>.</td><td>O(1)</td></tr>
+  <tr><td><code>get_live_flag_state(scene, vl, path)</code></td><td>Cache lookup; <code>None</code> if unknown.</td><td>O(1)</td></tr>
+  <tr><td><code>get_descendant_paths(scene, vl, path)</code></td><td>Prefix-filter over cache keys (non-recursive).</td><td>O(N)</td></tr>
+  <tr><td><code>apply_flags(scene, vl, path, flag_states)</code></td><td>Live DFS write (fallback path). Does <strong>not</strong> call <code>view_layer.update()</code>.</td><td>O(N)</td></tr>
+  <tr><td><code>apply_flag_states(scene, vl, path, flag_states)</code></td><td>Map-based write; returns <code>False</code> if the path is missing from the map (stale structure).</td><td>O(1)</td></tr>
+  <tr><td><code>build_rows(scene, expanded_paths)</code></td><td>Builds visible <code>CollectionRowState</code> rows honouring expansion, reading flags from the cache. Stores <strong>copies</strong> of flag dicts (<code>dict(state)</code>) so the pending overlay can never mutate the cache.</td><td>O(R·V)</td></tr>
+</table>
+
+<h3><code>models/collection_state.py</code> — Data Transfer Object</h3>
+
+<p><strong>Dataclass: <code>CollectionRowState</code></strong> — pure Python (no <code>bpy</code>). Fields: <code>path</code>, <code>name</code>, <code>depth</code>, <code>has_children</code>, <code>expanded</code>, <code>flags</code> (<code>{view_layer_name: {flag: bool}}</code>).</p>
+
+<h3><code>layer_manager_controller.py</code> — Controller Layer</h3>
+
+<p><strong>Class: <code>LayerManagerController</code></strong></p>
+
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>__init__(model)</code></td><td>Stores the model and wires all callbacks into <code>lmui.UI_HOOKS</code>.</td></tr>
+  <tr><td><code>refresh(context)</code></td><td>Forces a full cache rebuild (the Refresh button) and redraw.</td></tr>
+  <tr><td><code>mark_dirty()</code></td><td>Delegates to <code>model.mark_dirty()</code> (called by the invalidation handlers).</td></tr>
+  <tr><td><code>get_rows_data(context, props)</code></td><td><code>build_rows</code> + overlays <code>pending</code> changes on top of live state (on copies).</td></tr>
+  <tr><td><code>get_pending_count()</code></td><td>Total number of staged flag changes.</td></tr>
+  <tr><td><code>on_toggle_expand(props, path)</code></td><td>Expands/collapses a row in <code>lm_props</code>.</td></tr>
+  <tr><td><code>on_toggle_flag(context, vl, path, flag)</code></td><td>Computes the effective (staged-or-live) state, inverts it, and stages it for the path <strong>and all descendants</strong>.</td></tr>
+  <tr><td><code>_stage_flag(...)</code></td><td>Stages one change, dropping no-op entries that equal live state.</td></tr>
+  <tr><td><code>_prune_pending(vl, path)</code></td><td>Removes empty staging entries so <code>pending</code> holds no dead keys.</td></tr>
+  <tr><td><code>on_apply(context)</code></td><td>Commits all staged changes via the map; on a stale-map miss it rebuilds once, retries, then falls back to DFS <code>apply_flags</code>. Updates each touched view layer <strong>once</strong> (batched), then clears <code>pending</code> and marks the cache dirty.</td></tr>
+  <tr><td><code>on_cancel()</code></td><td>Discards all staged changes and redraws.</td></tr>
+  <tr><td><code>force_ui_redraw()</code></td><td>Tags all <code>VIEW_3D</code> areas for redraw.</td></tr>
+  <tr><td><code>cleanup()</code></td><td>Nullifies every <code>UI_HOOKS</code> callback.</td></tr>
+</table>
+
+<h3><code>layer_manager_ui.py</code> — View Layer</h3>
+
+<p><strong>Hook System — <code>UI_HOOKS</code> dict</strong> — a global dictionary of callbacks populated by the Controller. View code calls these hooks without importing the Controller.</p>
+
+<table>
+  <tr><th>Hook Key</th><th>Signature</th><th>Purpose</th></tr>
+  <tr><td><code>get_rows_data</code></td><td><code>(context, props)</code></td><td>Retrieve visible rows with effective flag states.</td></tr>
+  <tr><td><code>get_pending_count</code></td><td><code>()</code></td><td>Number of staged changes.</td></tr>
+  <tr><td><code>on_toggle_expand</code></td><td><code>(props, path)</code></td><td>Expand/collapse a row.</td></tr>
+  <tr><td><code>on_toggle_flag</code></td><td><code>(context, vl, path, flag)</code></td><td>Stage a flag change (parent + descendants).</td></tr>
+  <tr><td><code>on_apply</code></td><td><code>(context)</code></td><td>Apply all staged changes.</td></tr>
+  <tr><td><code>on_cancel</code></td><td><code>()</code></td><td>Discard all staged changes.</td></tr>
+  <tr><td><code>on_refresh</code></td><td><code>(context)</code></td><td>Force a live-state cache refresh.</td></tr>
+</table>
+
+<p><strong>Operators (Blender <code>bpy.types.Operator</code> subclasses)</strong></p>
+
+<table>
+  <tr><th>Class</th><th><code>bl_idname</code></th><th>Action</th></tr>
+  <tr><td><code>LM_OT_toggle_expand</code></td><td><code>lm.toggle_expand</code></td><td>Expand/collapse a collection row.</td></tr>
+  <tr><td><code>LM_OT_toggle_flag</code></td><td><code>lm.toggle_flag</code></td><td>Stage a flag toggle for a row.</td></tr>
+  <tr><td><code>LM_OT_refresh</code></td><td><code>lm.refresh</code></td><td>Force a cache refresh (header button).</td></tr>
+  <tr><td><code>LM_OT_apply_flags</code></td><td><code>lm.apply_flags</code></td><td>Commit pending changes ("OK").</td></tr>
+  <tr><td><code>LM_OT_cancel_flags</code></td><td><code>lm.cancel_flags</code></td><td>Discard pending changes ("CANCEL").</td></tr>
+</table>
+
+<p><strong>Panel:</strong> <code>LAYERMAN_PT_MainPanel</code> — <code>VIEW_3D</code> → Sidebar → Layer Manager tab ("BLENDER LAYER MANAGER").</p>
+
+<p><strong>Custom Properties:</strong> Registered on <code>bpy.types.WindowManager</code>: <code>lm_props</code> → <code>LM_Props</code>, whose <code>expanded</code> collection of <code>LM_ExpandItem</code> tracks which collection paths are expanded.</p>
+
+<p><strong>Helpers:</strong> <code>split_n(layout, count)</code> splits a row into <code>count</code> aligned columns (one per view layer); <code>FLAG_ICONS</code> maps each flag to its on/off icon pair.</p>
+
+<hr>
+
+<h2>Data Flow</h2>
+
+<pre><code>Draw path:
+Panel.draw() ──► UI_HOOKS["get_rows_data"](context, props)
+                       │
+                       ├──► model.build_rows(scene, expanded)   (from cache, O(R·V))
+                       └──► overlay pending onto row flag copies
+                       ▼
+                 render header / rows / flag cells / footer
+
+Toggle path:
+LM_OT_toggle_flag.execute() ──► UI_HOOKS["on_toggle_flag"](...)
+                                       │
+                                       ├──► compute effective state (live or staged)
+                                       ├──► stage parent + all descendants
+                                       └──► force_ui_redraw()
+
+Apply path:
+LM_OT_apply_flags.execute() ──► UI_HOOKS["on_apply"](context)
+                                       │
+                                       ├──► model.apply_flag_states() per path (map, O(1))
+                                       ├──► on stale miss: refresh_cache() → retry → DFS fallback
+                                       ├──► view_layer.update() once per touched view layer
+                                       └──► pending.clear() + model.mark_dirty() + redraw</code></pre>
+
+<hr>
+
+<h2>Caching Strategy</h2>
+
+<p>Two structures are built together in a <strong>single DFS walk</strong> per view layer (<code>refresh_cache</code>):</p>
+
+<ol>
+  <li><code>cache</code> — live flag states (<code>{path: {flag: bool}}</code>).</li>
+  <li><code>layer_collections</code> — <code>{path: LayerCollection}</code> for O(1) writes.</li>
+</ol>
+
+<p>Both are invalidated together via <code>cache_dirty</code>. Any invalidation trigger marks the cache dirty, and the <strong>next read</strong> (draw or toggle) lazily rebuilds both caches:</p>
+
+<ul>
+  <li><code>depsgraph_update_post</code> — fires on scene/view-layer/collection changes (including external edits in the Outliner).</li>
+  <li><code>undo_post</code> / <code>redo_post</code> — undo/redo of any operation.</li>
+  <li><code>load_post</code> — file load.</li>
+  <li><code>LM_OT_refresh</code> (Refresh button) — forces an immediate rebuild, covering any residual staleness.</li>
+</ul>
+
+<p>The Refresh button exists as a manual override because the depsgraph handler only <em>marks dirty</em>; it cannot know whether the change affected collections. Flag toggles staged by the add-on do <strong>not</strong> invalidate the map (they only affect flag values), so the map is purely structure-driven and stays valid across staging.</p>
+
+<p>Key safety property: <code>build_rows</code> copies flag dicts, so the pending overlay in <code>get_rows_data</code> can never write staged values back into the live cache (regression-tested).</p>
+
+<hr>
+
+<h2>Staging Transaction Model</h2>
+
+<ul>
+  <li><code>pending</code> is <code>{view_layer_name: {path: {flag: new_state}}}</code>.</li>
+  <li>Toggling a parent also stages the same change for <strong>every descendant</strong> (<code>get_descendant_paths</code>).</li>
+  <li><code>_stage_flag</code> drops entries whose target equals live state (no-op), and <code>_prune_pending</code> removes empty path/view-layer keys.</li>
+  <li><strong>OK</strong> (<code>on_apply</code>) commits everything; <strong>CANCEL</strong> (<code>on_cancel</code>) discards everything.</li>
+  <li>While changes are pending, the panel shows the <em>effective</em> (overlaid) state and the "Pending changes: N" counter; the action buttons are enabled only when <code>N &gt; 0</code>.</li>
+</ul>
+
+<hr>
+
+<h2>Performance Model</h2>
+
+<p><code>N</code> = total collections, <code>V</code> = view layers, <code>R</code> = visible rows, <code>D</code> = applied paths.</p>
+
+<table>
+  <tr><th>Path</th><th>Big-O</th><th>Measured @ 210 collections</th></tr>
+  <tr><td><code>refresh_cache</code> (full rebuild)</td><td>O(V·N)</td><td>~1 ms (1 VL) / ~3 ms (3 VL)</td></tr>
+  <tr><td><code>build_rows</code> (draw)</td><td>O(R·V), O(1)/cell</td><td>~1 ms (1 VL) / ~1.7 ms (3 VL)</td></tr>
+  <tr><td><code>get_live_flag_state</code></td><td>O(1)</td><td>&lt; 0.01 ms</td></tr>
+  <tr><td>toggle recursion (<code>on_toggle_flag</code>)</td><td>O(N)</td><td>~0.1 ms</td></tr>
+  <tr><td><code>on_apply</code> (all pending, batched)</td><td>O(D + N)</td><td>~6 ms (210 flags)</td></tr>
+  <tr><td>cache memory</td><td>O(V·N)</td><td>3 booleans per cell</td></tr>
+</table>
+
+<p>The pipeline is <strong>linear end-to-end</strong>; the previous O(N²) apply hotspot (a recursive DFS per path) was eliminated by the <code>layer_collections</code> map plus a single batched <code>view_layer.update()</code>.</p>
+
+<hr>
+
+<h2>Naming Conventions</h2>
+
+<ul>
+  <li><strong>Files:</strong> <code>layer_manager_*.py</code> prefix for consistency.</li>
+  <li><strong>Classes:</strong> PascalCase — <code>LayerManagerLogic</code>, <code>LayerManagerController</code>.</li>
+  <li><strong>Methods/Functions:</strong> snake_case — <code>get_descendant_paths</code>, <code>force_ui_redraw</code>.</li>
+  <li><strong>Operators:</strong> <code>LM_OT_*</code> (Blender standard: <code>{Addon}_{Type}_{Name}</code>).</li>
+  <li><strong>Panel:</strong> <code>LAYERMAN_PT_*</code> (Blender standard: <code>{Addon}_PT_{Name}</code>).</li>
+  <li><strong>Custom Properties:</strong> <code>lm_*</code> prefix (lowercase, namespaced with add-on initials).</li>
+  <li><strong>Flags:</strong> UPPER_CASE — <code>EXCLUDE</code>, <code>HOLDOUT</code>, <code>INDIRECT</code>.</li>
+  <li><strong>Hook keys:</strong> snake_case — <code>on_toggle_flag</code>, <code>get_rows_data</code>.</li>
+</ul>
+
+<hr>
+
+<h2>How to Extend</h2>
+
+<h3>Add a new UI control / hook</h3>
+<ol>
+  <li>Add a callback key to <code>UI_HOOKS</code> in <code>layer_manager_ui.py</code>.</li>
+  <li>Add the handler method in <code>LayerManagerController.__init__()</code>.</li>
+  <li>Add the UI element in <code>LAYERMAN_PT_MainPanel.draw()</code>.</li>
+</ol>
+
+<h3>Add a new Blender operator</h3>
+<ol>
+  <li>Create a class inheriting <code>bpy.types.Operator</code> in <code>layer_manager_ui.py</code>.</li>
+  <li>Add it to the <code>classes</code> tuple.</li>
+  <li>Delegate logic through <code>UI_HOOKS</code>.</li>
+</ol>
+
+<h3>Add or change a flag</h3>
+<ol>
+  <li>Add the property branch to <code>LayerManagerLogic.get_flag_state()</code> and <code>_set_flag()</code>.</li>
+  <li>Add an icon pair to <code>FLAG_ICONS</code> in <code>layer_manager_ui.py</code>.</li>
+  <li>Add an item to the <code>flag</code> EnumProperty of <code>LM_OT_toggle_flag</code>.</li>
+  <li>Add the flag to the per-cell loop in <code>LAYERMAN_PT_MainPanel.draw()</code>.</li>
+</ol>
+
+<h3>Change recursion behaviour</h3>
+<p>The descendant propagation in <code>on_toggle_flag</code> is driven by <code>get_descendant_paths</code>. To restrict propagation (e.g. to children only, not all descendants), change the filter in that method.</p>
+
+<hr>
+
+<h2>Testing</h2>
+
+<p>Headless regression suites (run against the addon package with a system Blender):</p>
+
+<ul>
+  <li>Cache build / lazy refresh / staleness + handler add/remove symmetry — <code>test_cache</code>.</li>
+  <li>130-collection correctness, batched apply, cancel-revert (cache un-pollution), and <strong>self-heal</strong> scenarios (rename/remove a collection, then apply) — <code>test_bigscene</code>.</li>
+  <li>Micro-benchmarks at 210 collections (1 and 3 view layers) — <code>bench_200</code>.</li>
+</ul>
+
+<p>The add-on registers cleanly headless: <code>register()</code> / <code>unregister()</code> add and remove the invalidation handlers symmetrically and idempotently.</p>
+
+</div>
+</body>
+</html>

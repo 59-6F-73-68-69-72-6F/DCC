@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blender Layer Manager v1.0 — User Documentation</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a2e; max-width: 960px; margin: 0 auto; padding: 2rem; background: #f8f9fa; }
+  h1 { color: #2d3436; border-bottom: 3px solid #0984e3; padding-bottom: .5rem; }
+  h2 { color: #2d3436; border-bottom: 2px solid #dfe6e9; padding-bottom: .3rem; margin-top: 2rem; }
+  h3 { color: #636e72; margin-top: 1.5rem; }
+  h4 { color: #636e72; }
+  a { color: #0984e3; }
+  code { background: #dfe6e9; padding: .15em .4em; border-radius: 3px; font-size: .9em; font-family: "SF Mono", "Fira Code", "Consolas", monospace; }
+  pre { background: #2d3436; color: #f8f9fa; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; color: inherit; }
+  hr { border: none; border-top: 1px solid #dfe6e9; margin: 2rem 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid #dfe6e9; padding: .6rem .8rem; text-align: left; }
+  th { background: #0984e3; color: #fff; font-weight: 600; }
+  tr:nth-child(even) { background: #f1f2f6; }
+  blockquote { border-left: 4px solid #0984e3; padding: .5rem 1rem; margin: 1rem 0; background: #f1f2f6; border-radius: 0 6px 6px 0; }
+  ul, ol { padding-left: 1.5rem; }
+  .badge { display: inline-block; background: #0984e3; color: #fff; padding: .2rem .6rem; border-radius: 3px; font-size: .8rem; font-weight: 600; }
+  .note { background: #ffeaa7; border-left: 4px solid #fdcb6e; padding: .5rem 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+  .container { background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Blender Layer Manager v1.0 — User Documentation</h1>
+
+<h2>Overview</h2>
+
+<p>The <strong>Blender Layer Manager</strong> is a native Blender add-on for managing collection visibility across view layers from a single panel. It gives you per-view-layer control of the three layer flags — <strong>Exclude</strong>, <strong>Holdout</strong>, and <strong>Indirect Only</strong> — with a clear table layout, one column per view layer, and one click per flag.</p>
+
+<table>
+  <tr><td><strong>Author</strong></td><td>Rudy Leti</td></tr>
+  <tr><td><strong>Version</strong></td><td>1.0.0</td></tr>
+  <tr><td><strong>Blender</strong></td><td>5.0+</td></tr>
+  <tr><td><strong>Category</strong></td><td>Lighting</td></tr>
+</table>
+
+<hr>
+
+<h2>Installation</h2>
+
+<ol>
+  <li>Copy the <code>layer_manager</code> folder into Blender's <code>scripts/addons/</code> directory (or zip it and use <strong>Install…</strong>).</li>
+  <li>In Blender, go to <strong>Edit → Preferences → Add-ons</strong>.</li>
+  <li>Search for <strong>"Layer Manager"</strong> in the add-on list and enable it.</li>
+  <li>The panel appears in the <strong>3D View → Sidebar → Layer Manager</strong> tab.</li>
+</ol>
+
+<div class="note"><strong>Note:</strong> Press <code>N</code> in the 3D View to toggle the sidebar if it is hidden.</div>
+
+<hr>
+
+<h2>Interface Overview</h2>
+
+<h3>1. Header Row</h3>
+
+<p>The header shows the <strong>Refresh</strong> button (top-right), a <strong>COLLECTIONS</strong> column, and one column per view layer (labelled with the render-layers icon).</p>
+
+<h3>2. Collection Rows</h3>
+
+<p>Each collection is one row. Deeper collections are <strong>indented</strong> to reflect the Outliner hierarchy. Rows with children show a <strong>disclosure triangle</strong> to expand or collapse the nested collections.</p>
+
+<h3>3. Flag Cells</h3>
+
+<p>Each row has one cell per view layer containing the three flag toggles for that collection:</p>
+
+<table>
+  <tr><th>Flag</th><th>Icon</th><th>Description</th></tr>
+  <tr><td><strong>Exclude</strong></td><td>Checkbox</td><td>Excludes the collection from the view layer (objects stop contributing to viewport and render).</td></tr>
+  <tr><td><strong>Holdout</strong></td><td>Mask</td><td>Masks the collection out of the final render, like a hole in the image.</td></tr>
+  <tr><td><strong>Indirect Only</strong></td><td>Dot</td><td>Renders only the indirect (bounced) light contributions of the collection.</td></tr>
+</table>
+
+<h3>4. Action Bar &amp; Footer</h3>
+
+<p>A <strong>"Pending changes: N"</strong> counter shows how many flag changes are staged. The <strong>OK</strong> and <strong>CANCEL</strong> buttons apply or discard the staged changes. The footer displays the copyright notice.</p>
+
+<hr>
+
+<h2>How to Use</h2>
+
+<h3>Expand / Collapse</h3>
+
+<p>Click the <strong>disclosure triangle</strong> next to a collection name to show or hide its children. Nested collections are indented proportionally, matching the Outliner's hierarchy.</p>
+
+<h3>Toggle a Flag</h3>
+
+<p>Click any flag icon in a collection's row to toggle that flag for the current state. When you toggle a <strong>parent</strong> collection, the same change is also staged for <strong>all of its descendants</strong>, so you can exclude an entire branch with a single click.</p>
+
+<h3>Staging vs. Applying</h3>
+
+<ul>
+  <li>Toggles are <strong>staged</strong> first — nothing is written to the scene until you press <strong>OK</strong>.</li>
+  <li>Press <strong>OK</strong> to commit all staged changes to the view layers.</li>
+  <li>Press <strong>CANCEL</strong> to discard all staged changes and restore the previous state.</li>
+  <li>The action buttons are enabled only when at least one change is pending.</li>
+</ul>
+
+<div class="note"><strong>Note:</strong> While changes are pending, the panel shows the <em>effective</em> state (staged changes overlaid on the current scene state), so you can preview the result before applying.</div>
+
+<h3>Keep the Panel In Sync</h3>
+
+<p>The panel auto-refreshes when the scene changes (Outliner edits, undo/redo, file load). If the displayed state ever looks out of date, click the <strong>Refresh</strong> button in the top-right corner of the header to force a full rebuild.</p>
+
+<hr>
+
+<h2>Tips</h2>
+
+<ul>
+  <li><strong>Batch exclusion:</strong> Toggle a parent collection to stage the same flag for its whole branch — ideal for excluding large asset groups from a view layer.</li>
+  <li><strong>Preview before committing:</strong> Stage changes, check the "Pending changes" counter and the visual preview, then press <strong>OK</strong>.</li>
+  <li><strong>Multi-view-layer workflow:</strong> Each column is an independent view layer, so the same collection can be visible in one render layer and excluded in another.</li>
+  <li><strong>If in doubt, Refresh:</strong> Any external change to collections or view layers is picked up automatically; the Refresh button is a manual safety net.</li>
+</ul>
+
+<hr>
+
+<h2>Troubleshooting</h2>
+
+<table>
+  <tr><th>Issue</th><th>Solution</th></tr>
+  <tr><td>Panel not showing</td><td>Ensure the add-on is enabled in Preferences. Press <code>N</code> to open the 3D View sidebar.</td></tr>
+  <tr><td>"Layer Manager is not registered."</td><td>Disable any duplicate copy of the add-on, then re-enable it. Duplicate installations conflict.</td></tr>
+  <tr><td>Flag change has no visible effect</td><td>Press <strong>OK</strong> — toggles are only staged until applied. Check that you are looking at the right view layer.</td></tr>
+  <tr><td>Panel shows a stale state</td><td>Click the <strong>Refresh</strong> button in the header (top-right) to rebuild the live state.</td></tr>
+  <tr><td>No view layers listed</td><td>Add a view layer in <strong>Properties → Scene → View Layers</strong>; the panel shows one column per view layer.</td></tr>
+  <tr><td>Missing collections</td><td>Only collections present in the scene root hierarchy are listed. Check the collection is linked to the scene and the row is expanded.</td></tr>
+</table>
+
+<hr>
+
+<h2>Uninstallation</h2>
+
+<p>Disable or remove the add-on via <strong>Edit → Preferences → Add-ons</strong> → search for <strong>"Layer Manager"</strong> → uncheck or remove.</p>
+
+</div>
+</body>
+</html>
