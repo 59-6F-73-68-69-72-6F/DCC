@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blender Light Manager v3.7 — Developer Documentation</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a2e; max-width: 960px; margin: 0 auto; padding: 2rem; background: #f8f9fa; }
+  h1 { color: #2d3436; border-bottom: 3px solid #6c5ce7; padding-bottom: .5rem; }
+  h2 { color: #2d3436; border-bottom: 2px solid #dfe6e9; padding-bottom: .3rem; margin-top: 2rem; }
+  h3 { color: #636e72; margin-top: 1.5rem; }
+  h4 { color: #636e72; }
+  a { color: #6c5ce7; }
+  code { background: #dfe6e9; padding: .15em .4em; border-radius: 3px; font-size: .9em; font-family: "SF Mono", "Fira Code", "Consolas", monospace; }
+  pre { background: #2d3436; color: #f8f9fa; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; color: inherit; }
+  hr { border: none; border-top: 1px solid #dfe6e9; margin: 2rem 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid #dfe6e9; padding: .6rem .8rem; text-align: left; }
+  th { background: #6c5ce7; color: #fff; font-weight: 600; }
+  tr:nth-child(even) { background: #f1f2f6; }
+  blockquote { border-left: 4px solid #6c5ce7; padding: .5rem 1rem; margin: 1rem 0; background: #f1f2f6; border-radius: 0 6px 6px 0; }
+  ul, ol { padding-left: 1.5rem; }
+  .badge { display: inline-block; background: #6c5ce7; color: #fff; padding: .2rem .6rem; border-radius: 3px; font-size: .8rem; font-weight: 600; }
+  .container { background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Blender Light Manager v3.7 — Developer Documentation</h1>
+
+<h2>Architecture Overview</h2>
+
+<p>The add-on follows the <strong>Model-View-Controller (MVC)</strong> architectural pattern.</p>
+
+<pre><code>__init__.py                           (Bootstrap / Entry Point)
+    │
+    ├──► light_manager_controller.py   (Controller)
+    │         │
+    │         ├──► light_manager_logic.py    (Model)
+    │         │         │
+    │         │         └──► models/light_state.py   (DTO)
+    │         │
+    │         └──► light_manager_ui.py   (View)
+    │
+    └──► light_manager_ui.py   (View registration)</code></pre>
+
+<h3>Layer Responsibilities</h3>
+
+<table>
+  <tr><th>Layer</th><th>File</th><th>Role</th></tr>
+  <tr><td><strong>Model</strong></td><td><code>light_manager_logic.py</code> + <code>models/light_state.py</code></td><td>Pure data/logic. Performs all direct Blender <code>bpy</code> operations (CRUD, visibility, solo, attribute editing). Has <strong>zero imports</strong> from View or Controller.</td></tr>
+  <tr><td><strong>View</strong></td><td><code>light_manager_ui.py</code></td><td>Blender UI components: custom properties, Operators, Panel. Delegates logic to the Controller via the <code>UI_HOOKS</code> callback dictionary.</td></tr>
+  <tr><td><strong>Controller</strong></td><td><code>light_manager_controller.py</code></td><td>Mediates Model ↔ View. Registers callbacks into <code>UI_HOOKS</code>, manages a depsgraph update handler for auto-refresh, pushes status/stats messages to the UI.</td></tr>
+  <tr><td><strong>Bootstrap</strong></td><td><code>__init__.py</code></td><td><code>bl_info</code> metadata, <code>register()</code> / <code>unregister()</code> add-on lifecycle. Creates the Model and Controller instances.</td></tr>
+</table>
+
+<hr>
+
+<h2>File Breakdown</h2>
+
+<h3><code>__init__.py</code> — Entry Point</h3>
+<ul>
+  <li>Defines <code>bl_info</code> (add-on metadata for Blender).</li>
+  <li><code>register()</code>: Instantiates <code>LightManagerLogic</code> and <code>LightManagerController</code>, registers UI classes via <code>lmui.register()</code>.</li>
+  <li><code>unregister()</code>: Cleans up the controller (removes Blender handlers, nullifies hooks), then unregisters UI classes.</li>
+  <li>Module-level <code>controller_instance</code> holds the singleton <code>LightManagerController</code>.</li>
+</ul>
+
+<h3><code>light_manager_logic.py</code> — Model Layer</h3>
+
+<p><strong>Class: <code>LightManagerLogic</code></strong></p>
+
+<table>
+  <tr><th>Method</th><th>Description</th></tr>
+  <tr><td><code>get_active_view_layer()</code></td><td>Returns the name of the currently active view layer (checks 3 fallback sources).</td></tr>
+  <tr><td><code>get_lights(view_layer_name)</code></td><td>Returns a sorted <code>list[LightState]</code> of all managed lights. Auto-detects solo mode if exactly one light is visible among many.</td></tr>
+  <tr><td><code>create_light(name, type)</code></td><td>Creates a new light with dedicated collection (<code>C_</code>) and locator (<code>World_</code>). Returns the final naming convention string.</td></tr>
+  <tr><td><code>rename_light(old_name, new_name)</code></td><td>Renames collection, locator, light object, and data block atomically.</td></tr>
+  <tr><td><code>delete_light(light_name)</code></td><td>Removes collection (with <code>do_unlink</code>), locator, and light object.</td></tr>
+  <tr><td><code>set_light_visibility(light_name, is_visible, view_layer_name)</code></td><td>Shows/hides via collection exclusion.</td></tr>
+  <tr><td><code>set_light_solo(light_name, is_soloed, view_layer_name, all_light_names)</code></td><td>Snapshots visibility states when soloing, restores on unsolo.</td></tr>
+  <tr><td><code>set_light_attribute(light_name, attr_name, value)</code></td><td>Sets attributes on the object or its data block. Special handling for <code>lightgroup</code>.</td></tr>
+</table>
+
+<h4>Naming Prefixes (constants)</h4>
+<table>
+  <tr><th>Constant</th><th>Value</th><th>Purpose</th></tr>
+  <tr><td><code>PREFIX_lgt</code></td><td><code>"Lgt_"</code></td><td>Light object names in Blender</td></tr>
+  <tr><td><code>PREFIX_col</code></td><td><code>"C_"</code></td><td>Collection names containing a light + locator</td></tr>
+  <tr><td><code>PREFIX_loc</code></td><td><code>"World_"</code></td><td>Locator (empty transform) object names</td></tr>
+</table>
+
+<h3><code>models/light_state.py</code> — Data Transfer Object</h3>
+
+<p><strong>Dataclass: <code>LightState</code></strong></p>
+
+<p>Contains all relevant properties of a managed light: <code>obj</code>, <code>name</code>, <code>is_visible</code>, <code>is_soloed</code>, <code>type</code>, <code>lightgroup</code>.</p>
+
+<h3><code>light_manager_controller.py</code> — Controller Layer</h3>
+
+<p><strong>Class: <code>LightManagerController</code></strong></p>
+<ul>
+  <li>Owns a reference to the <code>LightManagerLogic</code> model.</li>
+  <li>Populates the <code>lmui.UI_HOOKS</code> dictionary with callback methods.</li>
+  <li>Manages a <code>_depsgraph_handlers</code> list for Blender event handler lifecycle.</li>
+  <li>Uses caching (<code>_dirty</code> flag, <code>_last_data</code>, <code>_last_view_layer</code>) to avoid redundant queries.</li>
+  <li><code>register_handlers()</code> / <code>unregister_handlers()</code>: Add/remove depsgraph update post handler that auto-refreshes viewports when light data changes.</li>
+  <li><code>force_ui_redraw()</code>: Tags all <code>UI</code> regions for redraw.</li>
+  <li><code>force_ui_refresh()</code>: Sets <code>_dirty = True</code> and triggers redraw.</li>
+  <li><code>set_status(msg)</code>: Pushes a status string to <code>wm.lm_status_info</code>.</li>
+  <li><code>get_ui_lights(view_layer_name)</code>: Enriches <code>LightState</code> data with Blender objects and calculates stats (total/visible/soloed), stored in <code>wm.lm_stats_info</code>.</li>
+  <li><code>cleanup()</code>: Tears down handlers and nullifies all <code>UI_HOOKS</code> callbacks.</li>
+</ul>
+
+<h3><code>light_manager_ui.py</code> — View Layer</h3>
+
+<h4>Hook System — <code>UI_HOOKS</code> dict</h4>
+<p>A global dictionary of callbacks populated by the Controller. View code calls these hooks without importing the Controller directly.</p>
+
+<table>
+  <tr><th>Hook Key</th><th>Signature</th><th>Purpose</th></tr>
+  <tr><td><code>on_create</code></td><td><code>(name, light_type)</code></td><td>Create a light</td></tr>
+  <tr><td><code>on_rename</code></td><td><code>(old_name, new_name)</code></td><td>Rename a light</td></tr>
+  <tr><td><code>on_delete</code></td><td><code>(light_name)</code></td><td>Delete a light</td></tr>
+  <tr><td><code>on_visibility_toggle</code></td><td><code>(light_name, state)</code></td><td>Toggle visibility</td></tr>
+  <tr><td><code>on_solo_toggle</code></td><td><code>(light_name, state)</code></td><td>Toggle solo mode</td></tr>
+  <tr><td><code>on_attribute_changed</code></td><td><code>(light_name, attr_name, value)</code></td><td>Change an attribute</td></tr>
+  <tr><td><code>get_lights_data</code></td><td><code>(view_layer_name)</code></td><td>Retrieve light data</td></tr>
+  <tr><td><code>on_refresh</code></td><td><code>()</code></td><td>Force a full data refresh</td></tr>
+</table>
+
+<h4>Operators (Blender <code>bpy.types.Operator</code> subclasses)</h4>
+<table>
+  <tr><th>Class</th><th><code>bl_idname</code></th><th>Action</th></tr>
+  <tr><td><code>LM_OT_CreateLight</code></td><td><code>lm.create_light</code></td><td>Create a new light</td></tr>
+  <tr><td><code>LM_OT_RenameLight</code></td><td><code>lm.rename_light</code></td><td>Rename the active light</td></tr>
+  <tr><td><code>LM_OT_DeleteLight</code></td><td><code>lm.delete_light</code></td><td>Delete a light</td></tr>
+  <tr><td><code>LM_OT_ToggleVisibility</code></td><td><code>lm.toggle_visibility</code></td><td>Toggle light visibility</td></tr>
+  <tr><td><code>LM_OT_ToggleSolo</code></td><td><code>lm.toggle_solo</code></td><td>Toggle solo mode</td></tr>
+  <tr><td><code>LM_OT_SelectLight</code></td><td><code>lm.select_light</code></td><td>Select and activate a light</td></tr>
+  <tr><td><code>LM_OT_ToggleLightLinking</code></td><td><code>lm.toggle_light_linking</code></td><td>Toggle light linking editor</td></tr>
+  <tr><td><code>LM_OT_RefreshLights</code></td><td><code>lm.refresh_lights</code></td><td>Force a full data refresh</td></tr>
+  <tr><td><code>LM_OT_PageLights</code></td><td><code>lm.page_lights</code></td><td>Navigate light list pages</td></tr>
+</table>
+
+<h4>Panel</h4>
+<table>
+  <tr><th>Class</th><th>Location</th></tr>
+  <tr><td><code>LIGHTMAN_PT_MainPanel</code></td><td><code>VIEW_3D</code> → Sidebar → Light Manager tab</td></tr>
+</table>
+
+<h4>Custom Properties</h4>
+<p>Registered on <code>bpy.types.WindowManager</code>:</p>
+<ul>
+  <li><code>lm_entry_name</code> — String property for light name input</li>
+  <li><code>lm_entry_type</code> — Enum property (POINT, SUN, SPOT, AREA)</li>
+  <li><code>lm_search_filter</code> — String property for search/filter</li>
+  <li><code>lm_stats_info</code> — Read-only stats string</li>
+  <li><code>lm_status_info</code> — Read-only status string</li>
+  <li><code>lm_ll_active_light</code> — String property tracking which light's linking UI is open</li>
+  <li><code>lm_page_index</code> — Integer property for pagination page index</li>
+</ul>
+<p>Registered on <code>bpy.types.Object</code>:</p>
+<ul>
+  <li><code>lm_lightgroup</code> — Enum property synced to Blender's native <code>lightgroup</code></li>
+</ul>
+
+<hr>
+
+<h2>Data Flow</h2>
+
+<pre><code>User clicks button in UI
+       │
+       ▼
+Operator.execute() ──► UI_HOOKS["on_*"](...)
+                               │
+                               ▼
+               LightManagerController.on_*(...)
+                               │
+                               ├──► model.create_light(...)
+                               ├──► set_status(msg)
+                               └──► force_ui_redraw()</code></pre>
+
+<h2>Event-Driven Auto-Refresh</h2>
+
+<p>The controller registers a <code>depsgraph_update_post</code> handler. When any <code>bpy.types.Light</code> data block or <code>bpy.types.Object</code> with <code>type == 'LIGHT'</code> is updated externally (e.g., user modifies a light in the viewport), the dirty flag is set and all <code>UI</code> regions are tagged for redraw.</p>
+
+<h2>Caching Strategy</h2>
+
+<p>The controller caches light data between draws to avoid rebuilding the list on every panel refresh. The <code>get_ui_lights()</code> method returns <code>_last_data</code> if:</p>
+<ul>
+  <li>The <code>_dirty</code> flag is <code>False</code> (no create/rename/delete/toggle has occurred), and</li>
+  <li>The view layer has not changed since the last call.</li>
+</ul>
+<p>Any data-modifying action (create, rename, delete, visibility toggle, solo toggle, attribute change) sets <code>_dirty = True</code>. The <code>on_refresh</code> hook and the depsgraph handler also set the dirty flag.</p>
+
+<hr>
+
+<h2>Naming Conventions</h2>
+
+<ul>
+  <li><strong>Files:</strong> <code>light_manager_*.py</code> prefix for consistency.</li>
+  <li><strong>Classes:</strong> PascalCase — <code>LightManagerLogic</code>, <code>LightManagerController</code>.</li>
+  <li><strong>Methods/Functions:</strong> snake_case — <code>get_active_view_layer</code>, <code>force_ui_redraw</code>.</li>
+  <li><strong>Constants:</strong> UPPER_CASE — <code>PREFIX_lgt</code>, <code>PREFIX_col</code>, <code>UI_HOOKS</code>.</li>
+  <li><strong>Operators:</strong> <code>LM_OT_*</code> (Blender standard: <code>{Addon}_{Type}_{Name}</code>).</li>
+  <li><strong>Panel:</strong> <code>LIGHTMAN_PT_*</code> (Blender standard: <code>{Addon}_PT_{Name}</code>).</li>
+  <li><strong>Custom Properties:</strong> <code>lm_*</code> prefix (lowercase, namespaced with add-on initials).</li>
+</ul>
+
+<hr>
+
+<h2>How to Extend</h2>
+
+<h3>Add a new UI control</h3>
+<ol>
+  <li>Add a callback key to <code>UI_HOOKS</code> in <code>light_manager_ui.py</code>.</li>
+  <li>Add the handler method in <code>LightManagerController.__init__()</code>.</li>
+  <li>Add the UI element in <code>LIGHTMAN_PT_MainPanel.draw()</code>.</li>
+</ol>
+
+<h3>Add a new Blender operator</h3>
+<ol>
+  <li>Create a new class inheriting <code>bpy.types.Operator</code> in <code>light_manager_ui.py</code>.</li>
+  <li>Add it to the <code>classes</code> tuple.</li>
+  <li>Use <code>UI_HOOKS</code> to delegate logic to the Controller.</li>
+</ol>
+
+<h3>Add a new light property</h3>
+<ol>
+  <li>Add the field to <code>LightState</code> dataclass in <code>models/light_state.py</code>.</li>
+  <li>Read the value in <code>LightManagerLogic.get_lights()</code>.</li>
+  <li>Write the value in <code>LightManagerLogic.set_light_attribute()</code>.</li>
+  <li>Display it in <code>LIGHTMAN_PT_MainPanel.draw()</code>.</li>
+</ol>
+
+</div>
+</body>
+</html>
