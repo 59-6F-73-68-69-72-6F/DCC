@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Light Link Savior — User Guide</title>
+  <style>
+    :root {
+      --bg: #1e1f24;
+      --panel: #2a2c33;
+      --panel-2: #32343d;
+      --border: #43464f;
+      --text: #e8e8ec;
+      --muted: #a0a3ad;
+      --accent: #5b8def;
+      --accent-2: #7aa7ff;
+      --ok: #4caf7d;
+      --warn: #e0a458;
+      --err: #e05b5b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+    }
+    header {
+      padding: 32px 24px 20px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #23252c, var(--bg));
+    }
+    header h1 { margin: 0 0 4px; font-size: 1.7rem; letter-spacing: .3px; }
+    header p { margin: 0; color: var(--muted); }
+    main { max-width: 860px; margin: 0 auto; padding: 28px 24px 64px; }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+      margin-bottom: 22px;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1.2rem;
+      color: var(--accent-2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h3 { margin: 18px 0 8px; font-size: 1rem; }
+    p { margin: 8px 0; }
+    ul, ol { margin: 8px 0; padding-left: 22px; }
+    li { margin: 4px 0; }
+    code, kbd {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 6px;
+      font-family: Consolas, Menlo, monospace;
+      font-size: .92em;
+      color: var(--accent-2);
+    }
+    .step {
+      background: var(--panel-2);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin: 10px 0;
+    }
+    .step b { color: var(--accent-2); }
+    .note {
+      background: var(--panel-2);
+      border-left: 3px solid var(--warn);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin: 10px 0;
+    }
+    .error-note {
+      border-left-color: var(--err);
+    }
+    .ok-note {
+      border-left-color: var(--ok);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--accent-2); }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: .85rem;
+      padding: 16px 24px 32px;
+      border-top: 1px solid var(--border);
+    }
+    @media (max-width: 640px) {
+      main { padding: 18px 14px 48px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Light Link Savior</h1>
+  <p>Save and restore the light linking state of your scene lights — version 1.0.0</p>
+</header>
+
+<main>
+
+  <!-- ================================================================== -->
+  <section>
+    <h2>1. What it does</h2>
+    <p>
+      <strong>Light Link Savior</strong> captures which objects and collections each
+      light <em>illuminates</em> (receiver links) and which ones it
+      <em>shadows</em> (blocker links), and saves that state to a temporary file.
+      Later you can <strong>restore</strong> that exact setup with one click.
+    </p>
+    <p>Useful when lights are being reshuffled, re-parented, or when a shot needs the same linking layout reapplied after heavy edits.</p>
+  </section>
+
+  <!-- ================================================================== -->
+  <section>
+    <h2>2. Requirements</h2>
+    <ul>
+      <li>Blender <strong>4.0</strong> or newer (<em>Light Linking</em> must be available).</li>
+      <li>Write permission on the addon folder (to store the temporary stash file).</li>
+    </ul>
+  </section>
+
+  <!-- ================================================================== -->
+  <section>
+    <h2>3. Installation</h2>
+    <div class="step"><b>Step 1 —</b> Copy the <code>light_link_savior</code> folder into Blender&rsquo;s addons directory
+      (e.g. <code>scripts/addons/</code>).</div>
+    <div class="step"><b>Step 2 —</b> Open <strong>Edit &gt; Preferences &gt; Add-ons</strong>.</div>
+    <div class="step"><b>Step 3 —</b> Search for <em>&ldquo;Light Link Savior&rdquo;</em> and tick the checkbox to enable it.</div>
+    <div class="step"><b>Step 4 —</b> In the 3D Viewport, press <kbd>N</kbd> to open the sidebar and go to the
+      <strong>Lighting</strong> tab. The <strong>Light Link Savior</strong> panel is there.</div>
+  </section>
+
+  <!-- ================================================================== -->
+  <section>
+    <h2>4. How to use it</h2>
+    <p>Set up your light linking as usual (receivers / blockers via Blender&rsquo;s Light Linking panel).</p>
+
+    <h3>Save</h3>
+    <div class="step ok-note">
+      In the <code>LIGHT LINK SAVIOR</code> panel click <strong>Save</strong>.<br>
+      The current receiver and blocker state of <em>every light in the active scene</em> is written to a JSON stash file.
+    </div>
+
+    <h3>Restore</h3>
+    <div class="step">
+      Click <strong>Restore</strong>. The previously saved state is re-applied to the scene lights.
+      Once restored, the stash file is <strong>deleted</strong> — the recovery is a one-shot operation.
+    </div>
+    <div class="note error-note">
+      If you click <strong>Restore</strong> before ever saving, Blender reports
+      <em>&ldquo;No saved light links to restore&rdquo;</em>.
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <section>
+    <h2>5. What is saved</h2>
+    <table>
+      <tr><th>Light</th><th>Captured data</th></tr>
+      <tr><td>Receiver links</td><td>Collections and objects that receive light, with their INCLUDE / EXCLUDE state.</td></tr>
+      <tr><td>Blocker links</td><td>Collections and objects that cast shadows for the light, with their INCLUDE / EXCLUDE state.</td></tr>
+    </table>
+    <p>Requirements are matched by <strong>name</strong>. Objects and collections must still exist (and keep their names) when restoring.</p>
+  </section>
+
+  <!-- ================================================================== -->
+  <section>
+    <h2>6. Where the data is stored</h2>
+    <p>The state is saved as a temporary JSON file at:</p>
+    <p><code>&lt;addon folder&gt;/temp/light_linking_stash.json</code></p>
+    <p>The file is overwritten on <em>Save</em> and removed after <em>Restore</em>.</p>
+  </section>
+
+  <!-- ================================================================== -->
+  <section>
+    <h2>7. Troubleshooting</h2>
+    <table>
+      <tr><th>Symptom</th><th>Fix</th></tr>
+      <tr>
+        <td>&ldquo;No saved light links to restore&rdquo;</td>
+        <td>Run <strong>Save</strong> first. The stash was consumed by a previous Restore.</td>
+      </tr>
+      <tr>
+        <td>Some objects are not restored</td>
+        <td>The object/collection was renamed or deleted since the Save. Rename it back to relink.</td>
+      </tr>
+      <tr>
+        <td>Can&rsquo;t enable the addon</td>
+        <td>Check you are using Blender 4.0+, the correct addons folder, and that the addon is the complete <code>light_link_savior</code> package.</td>
+      </tr>
+      <tr>
+        <td>Save/Restore does nothing that you can see</td>
+        <td>Make sure you have at least one <strong>light object</strong> whose light linking you can modify (panel may appear elsewhere in Layout too).</td>
+      </tr>
+    </table>
+  </section>
+
+</main>
+
+<footer>© 2026 Rudy Leti. All Rights Reserved.</footer>
+
+</body>
+</html>
